@@ -1,0 +1,18 @@
+# This file is for an explicit one-off Cloud Build invocation. The normal
+# multi-stack path is scripts/cloudshell_build_middleware.sh, which derives a
+# stack-specific image name. Always override _IMAGE here; the placeholder is
+# intentionally not a deployable shared image name.
+substitutions:
+  _IMAGE: "us-central1-docker.pkg.dev/$PROJECT_ID/ceosystem/REPLACE_WITH_STACK-billing-api:latest"
+
+
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "--file=services/billing_api_v3/Dockerfile"
+      - "--tag=${_IMAGE}"
+      - "."
+
+images:
+  - "${_IMAGE}"

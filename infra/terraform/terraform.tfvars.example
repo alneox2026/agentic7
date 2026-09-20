@@ -1,0 +1,56 @@
+# For a normal deployment, use scripts/cloudshell_build_middleware.sh and
+# scripts/cloudshell_deploy_middleware.sh instead of this manual example.
+# Those scripts derive stack-specific images, names, state, and collections.
+project_id      = "YOUR_PROJECT_ID"
+region          = "us-central1"
+gateway_image   = "us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ceosystem/YOUR_STACK-gateway:YOUR_TAG"
+worker_image    = "us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ceosystem/YOUR_STACK-persistence-worker:YOUR_TAG"
+billing_api_image = "us-central1-docker.pkg.dev/YOUR_PROJECT_ID/ceosystem/YOUR_STACK-billing-api:YOUR_TAG"
+gateway_service_name                    = "YOUR_STACK-gateway"
+worker_service_name                     = "YOUR_STACK-persistence-worker"
+billing_api_service_name                = "YOUR_STACK-billing-api"
+gateway_service_account_name            = "YOUR_STACK-gateway-sa"
+worker_service_account_name             = "YOUR_STACK-worker-sa"
+billing_api_service_account_name        = "YOUR_STACK-billing-api-sa"
+eventarc_service_account_name           = "YOUR_STACK-eventarc-sa"
+billing_reconciler_service_account_name = "YOUR_STACK-reconciler-sa"
+pubsub_topic_name                       = "YOUR_STACK-turn-events"
+allowed_origins = ["https://ceoappdev.flutterflow.app"]
+billing_api_allowed_origins = ["https://ceoappdev.flutterflow.app"]
+gateway_stream_debug = false
+
+# Gemini API key for Managed Agents and Antigravity.
+# Create secret in Google Secret Manager: gcloud secrets create gemini-api-key --data-file=-
+gemini_api_key_secret_id      = "gemini-api-key"
+gemini_api_key_secret_version = "1"
+
+# The existing test-mode Secret Manager secret is never written to Terraform
+# state. Pin the version you created; a newly created secret normally starts at
+# version "1". Do not use `latest` for Cloud Run environment-variable secrets.
+billing_api_stripe_secret_key_secret_id      = "stripe-secret-key"
+billing_api_stripe_secret_key_secret_version = "1"
+
+# Keep empty until the Stripe webhook endpoint is deployed and Stripe gives you
+# its distinct `whsec_...` signing secret. Milestone 4 will use these values.
+billing_api_stripe_webhook_signing_secret_id      = ""
+billing_api_stripe_webhook_signing_secret_version = ""
+
+# Replace these examples with published FlutterFlow web routes before enabling
+# the Checkout button. The success URL must keep Stripe's literal placeholder.
+billing_api_checkout_success_url = "https://ceoappdev.flutterflow.app/billing-complete?session_id={CHECKOUT_SESSION_ID}"
+billing_api_checkout_cancel_url  = "https://ceoappdev.flutterflow.app/billing-cancelled"
+
+# Test defaults favor cost efficiency. In production, set billing_api_min_instances
+# to 1 if a warm instance is required and enable deletion protection.
+billing_api_min_instances        = 0
+billing_api_max_instances        = 20
+billing_api_concurrency          = 32
+billing_api_deletion_protection  = false
+
+# Keep these disabled until a funded development wallet and the Firestore rules
+# in docs/billing-wallet-setup.md have been verified end-to-end.
+billing_enforcement_enabled    = false
+billing_reconciliation_enabled = false
+
+# Optional: add Cloud Monitoring notification channel resource names for launch alerts.
+alert_notification_channels = []
