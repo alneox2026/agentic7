@@ -244,13 +244,13 @@ variable "billing_api_stripe_secret_key_secret_version" {
 variable "billing_api_stripe_webhook_signing_secret_id" {
   description = "Secret Manager secret ID for the Stripe webhook signing secret. Leave empty until the webhook endpoint is registered in Stripe."
   type        = string
-  default     = ""
+  default     = "stripe-webhook-signing-secret-agentic7"
 }
 
 variable "billing_api_stripe_webhook_signing_secret_version" {
   description = "Pinned numeric version of the Stripe webhook-signing Secret Manager secret when configured."
   type        = string
-  default     = ""
+  default     = "1"
 
   validation {
     condition = (
