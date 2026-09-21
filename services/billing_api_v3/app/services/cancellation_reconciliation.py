@@ -16,6 +16,11 @@ from services.billing_api_v3.app.services.firestore_client import (
 from services.billing_api_v3.app.services.stripe_gateway import StripeGateway, get_stripe_gateway
 
 
+# Firestore reserves document IDs matching __.*__. Keep internal migration
+# metadata out of that namespace and exclude it from cancellation-intent scans.
+MIGRATION_CHECKPOINT_DOCUMENT_ID = "migration_checkpoint_next_attempt_at_v1"
+
+
 @dataclass(frozen=True)
 class CancellationReconciliationResult:
     scanned_intents: int
@@ -112,7 +117,11 @@ class CancellationReconciliationService:
                 or getattr(intent_snapshot, "document_id", None)
                 or intent_data.get("cancellation_request_id")
             )
-            if not intent_id or str(intent_id).startswith("__"):
+            if (
+                not intent_id
+                or str(intent_id).startswith("__")
+                or str(intent_id) == MIGRATION_CHECKPOINT_DOCUMENT_ID
+            ):
                 skipped += 1
                 continue
 
@@ -311,7 +320,7 @@ class CancellationReconciliationService:
             "subscription_cancellation_requests_v3",
         )
         coll = client.collection(collection_name)
-        checkpoint_ref = coll.document("__migration_checkpoint_next_attempt_at__")
+        checkpoint_ref = coll.document(MIGRATION_CHECKPOINT_DOCUMENT_ID)
         checkpoint_snap = checkpoint_ref.get() if hasattr(checkpoint_ref, "get") else None
         checkpoint_data = (
             checkpoint_snap.to_dict()
@@ -373,10 +382,13 @@ class CancellationReconciliationService:
 
         for doc in docs:
             item_id = _doc_id(doc)
-            if not item_id or item_id.startswith("__"):
+            if not item_id:
                 continue
 
             cursor = item_id
+            if item_id.startswith("__") or item_id == MIGRATION_CHECKPOINT_DOCUMENT_ID:
+                continue
+
             data = (doc.to_dict() or {}) if hasattr(doc, "to_dict") else {}
             if data.get("status") not in ("unresolved", "pending"):
                 continue
@@ -461,4 +473,3 @@ class CancellationReconciliationService:
                 candidates.sort(key=_sort_key_next_attempt_at)
                 return candidates[:fetch_limit]
             return []
-

@@ -12,6 +12,7 @@ from common.billing import customer_billing_account_document_id
 from services.billing_api_v3.app.core.config import BillingApiSettings
 from services.billing_api_v3.app.services.cancellation_reconciliation import (
     CancellationReconciliationService,
+    MIGRATION_CHECKPOINT_DOCUMENT_ID,
 )
 from services.billing_api_v3.app.services.firestore_records import (
     build_initial_billing_account_document,
@@ -683,7 +684,7 @@ def test_reconcile_migration_checkpoints_and_completes() -> None:
     migrated = service._backfill_missing_next_attempt_at(client, now)
     assert migrated == 5
 
-    checkpoint = client.documents[("subscription_cancellation_requests", "__migration_checkpoint_next_attempt_at__")]
+    checkpoint = client.documents[("subscription_cancellation_requests", MIGRATION_CHECKPOINT_DOCUMENT_ID)]
     assert checkpoint["completed"] is True
     assert checkpoint["migrated_count"] == 5
     assert checkpoint["cursor"] == "re_legacy_04"
@@ -698,6 +699,38 @@ def test_reconcile_migration_checkpoints_and_completes() -> None:
     # Next run reads completed checkpoint and returns 0 immediately
     migrated_second = service._backfill_missing_next_attempt_at(client, now)
     assert migrated_second == 0
+
+
+def test_migration_checkpoint_is_valid_and_does_not_stall_pagination() -> None:
+    now = datetime(2026, 8, 12, tzinfo=timezone.utc)
+    client = FakeFirestore()
+    for doc_id in ("a_legacy", "z_legacy"):
+        client.documents[("subscription_cancellation_requests", doc_id)] = {
+            "schema_version": 1,
+            "cancellation_request_id": doc_id,
+            "status": "pending",
+            "created_at": now,
+        }
+
+    service = CancellationReconciliationService(
+        firestore_client_factory=lambda: client,
+        stripe_gateway=FakeStripeGateway(),
+        settings=_settings(),
+        now_factory=lambda: now,
+    )
+
+    assert not (
+        MIGRATION_CHECKPOINT_DOCUMENT_ID.startswith("__")
+        and MIGRATION_CHECKPOINT_DOCUMENT_ID.endswith("__")
+    )
+    assert service._backfill_missing_next_attempt_at(client, now, page_size=1) == 1
+    # The second page encounters the checkpoint itself. It must advance the
+    # cursor without treating the internal record as a cancellation intent.
+    assert service._backfill_missing_next_attempt_at(client, now, page_size=1) == 0
+    checkpoint = client.documents[("subscription_cancellation_requests", MIGRATION_CHECKPOINT_DOCUMENT_ID)]
+    assert checkpoint["cursor"] == MIGRATION_CHECKPOINT_DOCUMENT_ID
+    assert service._backfill_missing_next_attempt_at(client, now, page_size=1) == 1
+    assert client.documents[("subscription_cancellation_requests", "z_legacy")]["next_attempt_at"] == now
 
 
 def test_shared_lease_seconds_configured_in_settings() -> None:
@@ -742,7 +775,7 @@ def test_reconcile_migration_paginates_with_intermediate_checkpoint() -> None:
     migrated_1 = service._backfill_missing_next_attempt_at(client, now, page_size=100)
     assert migrated_1 == 100
 
-    checkpoint_1 = client.documents[("subscription_cancellation_requests", "__migration_checkpoint_next_attempt_at__")]
+    checkpoint_1 = client.documents[("subscription_cancellation_requests", MIGRATION_CHECKPOINT_DOCUMENT_ID)]
     assert checkpoint_1["completed"] is False
     assert checkpoint_1["cursor"] == "re_legacy_099"
     assert checkpoint_1["migrated_count"] == 100
@@ -754,7 +787,7 @@ def test_reconcile_migration_paginates_with_intermediate_checkpoint() -> None:
     migrated_2 = service._backfill_missing_next_attempt_at(client, now, page_size=100)
     assert migrated_2 == 1
 
-    checkpoint_2 = client.documents[("subscription_cancellation_requests", "__migration_checkpoint_next_attempt_at__")]
+    checkpoint_2 = client.documents[("subscription_cancellation_requests", MIGRATION_CHECKPOINT_DOCUMENT_ID)]
     assert checkpoint_2["completed"] is True
     assert checkpoint_2["cursor"] == "re_legacy_100"
     assert checkpoint_2["migrated_count"] == 101
@@ -858,5 +891,3 @@ def test_lease_seconds_clamped_to_safe_minimum() -> None:
 
     assert claimed_expiry is not None
     assert claimed_expiry >= now + timedelta(seconds=180)
-
-
